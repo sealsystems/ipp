@@ -15,7 +15,8 @@
     "test": "test-run",
     "test:coverage": "test-coverage",
     "test:coverage:check": "test-coverage-check",
-    "test:report": "test-report"
+    "test:report": "test-report",
+    "licenses": "license-checker --production --csv"
   },
   "homepage": "http://github.com/sealsystems/node-ipp",
   "repository": {
@@ -34,7 +35,7 @@
     }
   ],
   "devDependencies": {
-    "@sealsystems/eslint-config-es": "3.5.3",
+    "@sealsystems/eslint-config-es": "3.5.4",
     "@sealsystems/mocha": "4.1.1",
     "@sealsystems/semantic-release": "4.0.12",
     "concat-stream": "1.6.2",
@@ -49,5 +50,13 @@
       "type": "MIT",
       "url": "http://www.opensource.org/licenses/MIT"
     }
-  ]
+  ],
+  "license": "SEAL End User License",
+  "release": {
+    "extends": "@sealsystems/semantic-release/node-module"
+  },
+  "publishConfig": {
+    "registry": "http://plossys.jfrog.io/plossys/api/npm/npm-local"
+  },
+  "dependencies": {}
 }

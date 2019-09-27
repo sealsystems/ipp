@@ -1,38 +1,50 @@
 ################################################################################
-# OPEN SOURCE MODULE
+# STANDARD MODULE
 # Remove the comment if you changed the build scripts!
+# Used for distributing the build configuration via Plossys/scripts/ci/copy-circleci-config.sh
 ################################################################################
 
 version: 2
 
 x-environment: &environment
+  CONSUL_VERSION: 0.7.5
+  ENVCONSUL_VERSION: 0.6.2
   GIT_AUTHOR_EMAIL: com.git@sealsystems.de
   GIT_AUTHOR_NAME: CircleCI Build
   GIT_COMMITTER_EMAIL: com.git@sealsystems.de
   GIT_COMMITTER_NAME: CircleCI Build
   LOG_LEVELS: fatal
+  NODE_VERSION: 8.9.4
+  TLS_UNPROTECTED: world
 
 jobs:
   test:
     docker:
       - image: circleci/node:8.9.4
+      - image: mongo:3.2.9
+      - image: consul:0.7.5
 
     environment:
       <<: *environment
 
     steps:
       - checkout
+      - run: &configure-node-js
+          name: Configure Node.js
+          command: |
+            curl -k -u "${JFROG_CREDENTIALS}" "https://plossys.jfrog.io/plossys/api/npm/auth" > ~/.npmrc
+            npm config set registry http://plossys.jfrog.io/plossys/api/npm/npm-repo
+            node --version
       - restore_cache: &restore-cache
-          key: dependency-cache-{{ checksum "package.json" }}
+          key: dependency-cache-{{ checksum "package.json" }}-{{ checksum "package-lock.json" }}-{{ checksum ".circleci/config.yml" }}
       - run: &install-dependencies
           name: Install dependencies
           command: |
             if [ ! -d ./node_modules ]; then
               npm install
-              npm install --no-save @sealsystems/semantic-release-config roboter-cli semantic-release
             fi
       - save_cache: &save-cache
-          key: dependency-cache-{{ checksum "package.json" }}
+          key: dependency-cache-{{ checksum "package.json" }}-{{ checksum "package-lock.json" }}-{{ checksum ".circleci/config.yml" }}
           paths:
             - ./node_modules
       - run:
@@ -40,7 +52,7 @@ jobs:
           command: npm run bot
       - run:
           name: Run code coverage
-          command: npm run coverage
+          command: npm run test:coverage
       - store_artifacts:
           path: coverage/lcov-report
           destination: coverage
@@ -54,6 +66,8 @@ jobs:
 
     steps:
       - checkout
+      - run:
+          <<: *configure-node-js
       - restore_cache:
           <<: *restore-cache
       - run:
@@ -75,7 +89,6 @@ workflows:
             branches:
               ignore:
                 - master
-                - sealsystems
                 # bugfix banches (e.g. 1.2.x)
                 - /\d+\.\d+\.x/
 
@@ -87,7 +100,6 @@ workflows:
             branches:
               only:
                 - master
-                - sealsystems
                 # bugfix release banches (e.g. 1.2.x)
                 - /\d+\.\d+\.x/
       - release:

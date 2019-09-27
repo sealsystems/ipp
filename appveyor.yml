@@ -1,26 +1,86 @@
 ################################################################################
-# OPEN SOURCE MODULE
+# STANDARD MODULE
 # Remove the comment if you changed the build scripts!
+# Used for distributing the build configuration via Plossys/scripts/ci/copy-appveyor-config.sh
 ################################################################################
 
 version: "{build}"
 
-# Uncomment to debug via RDP
+# # Uncomment to debug via RDP
 # init:
 #   - ps: iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
 #
 # on_finish:
 #   - ps: $blockRdp = $true; iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
 
+image: Visual Studio 2017
+
 environment:
   NODE_VERSION: 8.9.4
+  MONGO_VERSION: "3.2.9"
+  NSSM_VERSION: "2.24-23-gfb96938"
+  CONSUL_VERSION: 0.7.5
+  TLS_UNPROTECTED: world
 
 install:
-  - ps: Install-Product node $env:NODE_VERSION x64
-  - npm install -g roboter-cli
-  - npm install
+  # Install Node.js
+  - ps: |
+      Install-Product node $env:NODE_VERSION x64
+
+      $username,$passwd = $env:JFROG_CREDENTIALS.split(':')
+      $secpasswd = ConvertTo-SecureString $passwd -AsPlainText -Force
+      $cred = New-Object PSCredential -ArgumentList $username,$secpasswd
+
+      $WebClient = New-Object System.Net.WebClient
+      $WebClient.Credentials = New-Object System.Net.Networkcredential($username, $passwd)
+      $WebClient.DownloadFile("https://plossys.jfrog.io/plossys/api/npm/auth", "$env:USERPROFILE\.npmrc")
+
+      npm config set registry http://plossys.jfrog.io/plossys/api/npm/npm-repo
+
+  # Install Consul
+  - ps: |
+      choco feature disable --name showDownloadProgress
+      choco install -y consul -version $env:CONSUL_VERSION
+
+      @{
+        bind_addr="127.0.0.1"
+        bootstrap_expect=1
+        ports=@{
+          dns=53
+          http=8500
+        }
+        server=$True
+      } | ConvertTo-Json | Out-File -Filepath C:\ProgramData\consul\config\config.json -Encoding ascii
+
+  # Install MongoDB with SSL
+  - ps: |
+      Write-Host "Uninstalling old MongoDB..."
+      msiexec.exe /qn /x `{FE313923-51D6-4FF6-AAF6-A78BEE1AF868`}
+      rm -r c:\mongodb
+
+      Write-Host "Installing MongoDB $env:MONGO_VERSION with SSL..."
+      $msiPath = "$($env:USERPROFILE)\mongodb-win32-x86_64-2008plus-ssl-$($env:MONGO_VERSION)-signed.msi"
+      (New-Object Net.WebClient).DownloadFile("https://fastdl.mongodb.org/win32/mongodb-win32-x86_64-2008plus-ssl-$($env:MONGO_VERSION)-signed.msi", $msiPath)
+
+      cmd /c start /wait msiexec /q /i $msiPath INSTALLLOCATION=C:\mongodb ADDLOCAL="all"
+      del $msiPath
+      mkdir c:\mongodb\data\db | Out-Null
+      mkdir c:\mongodb\log | Out-Null
+
+      Write-Host "Writing configuration..."
+      "systemLog:
+        destination: file
+        path: c:\mongodb\log\mongod.log
+      storage:
+        dbPath: c:\mongodb\data\db
+      " | Out-File C:\mongodb\mongod.cfg -Encoding utf8
+
+      Write-Host "Starting service..."
+      cmd /c start /wait sc create MongoDB binPath= "C:\mongodb\bin\mongod.exe --service --config=C:\mongodb\mongod.cfg" DisplayName= "MongoDB" start= "demand"
+      Start-Service mongodb
 
 build: off
 
 test_script:
+  - npm install
   - npm run bot
